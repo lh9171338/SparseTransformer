@@ -1,90 +1,91 @@
-# SpTr: PyTorch Spatially Sparse Transformer Library
+[<img height="23" src="https://raw.githubusercontent.com/lh9171338/Outline/master/icon.jpg"/>](https://github.com/lh9171338/Outline) Sparse Transformer
+===
+This repository is an optimized version of the [official SparseTransformer codebase](https://github.com/dvlab-research/SparseTransformer), featuring `FP16` and `BF16` support to significantly reduce GPU memory usage.
 
-<div align="center">
-  <img src="figs/sparse_transformer.png"/>
-</div>
+# 1. Environment
 
-**SparseTransformer (SpTr)** provides a **fast**, **memory-efficient**, and **easy-to-use** implementation for sparse transformer with **varying token numbers** (e.g., window transformer for 3D point cloud).
+- CUDA：11.8
+- PyTorch：2.0.0
 
-**SpTr** has been used by the following works:
+# 2. Install
 
-* **Spherical Transformer for LiDAR-based 3D Recognition (CVPR 2023)**: [\[Paper\]](https://arxiv.org/pdf/2303.12766.pdf) [\[Code\]](https://github.com/dvlab-research/SphereFormer)
-
-* **Stratified Transformer for 3D Point Cloud Segmentation (CVPR 2022)**: [\[Paper\]](https://openaccess.thecvf.com/content/CVPR2022/papers/Lai_Stratified_Transformer_for_3D_Point_Cloud_Segmentation_CVPR_2022_paper.pdf) [\[Code\]](https://github.com/dvlab-research/Stratified-Transformer)
-
-## Installation
-### Install Dependency
-```
-pip install torch==1.8.0+cu111 torchvision==0.9.0+cu111 torchaudio==0.8.0 -f https://download.pytorch.org/whl/torch_stable.html
-pip install torch_scatter==2.0.9
-pip install torch_geometric==1.7.2
+- install with pip
+```shell
+export TORCH_CUDA_ARCH_LIST="6.0 6.1 7.0 7.5 8.0 8.6 8.9 9.0+PTX" # support different GPU architectures [optional]
+export ENABLE_BF16=1 # support BF16 [optional]
+python3 -m pip install SparseTransformer
 ```
 
-### Compile sptr
-```
+- install from source
+```shell
+git clone https://github.com/lh9171338/SparseTransformer.git
+cd SparseTransformer
+
+export TORCH_CUDA_ARCH_LIST="6.0 6.1 7.0 7.5 8.0 8.6 8.9 9.0+PTX" # support different GPU architectures [optional]
+export ENABLE_BF16=1 # support BF16 [optional]
 python3 setup.py install
 ```
 
+# 3. Usage
 
-## Usage
-SpTr can be easily used in most current transformer-based 3D point cloud networks, with only several minor modifications. First, define the attention module `sptr.VarLengthMultiheadSA`. Then, wrap the input features and indices into `sptr.SparseTrTensor`, and forward it into the module. That's all. A simple example is as follows. For more complex usage, you can refer to the code of above works (e.g., SphereFormer, StratifiedFormer).
-### Example
-```
-import sptr
+Please refer to the official [README.md](https://github.com/dvlab-research/SparseTransformer/blob/master/README.md) for usage instructions.
 
-# Define module
-dim = 48
-num_heads = 3
-indice_key = 'sptr_0'
-window_size = np.array([0.4, 0.4, 0.4])  # can also be integers for voxel-based methods
-shift_win = False  # whether to adopt shifted window
-self.attn = sptr.VarLengthMultiheadSA(
-    dim, 
-    num_heads, 
-    indice_key, 
-    window_size, 
-    shift_win
-)
+# 4. Performance Evaluation
 
-# Wrap the input features and indices into SparseTrTensor. Note: indices can be either intergers for voxel-based methods or floats (i.e., xyz) for point-based methods
-# feats: [N, C], indices: [N, 4] with batch indices in the 0-th column
-input_tensor = sptr.SparseTrTensor(feats, indices, spatial_shape=None, batch_size=None)
-output_tensor = self.attn(input_tensor)
+## 4.1 Operator Benchmarking
+Tests were conducted on two attention computation modes:
+- Without relative position encoding (using `attention_step1` and `attention_step2` operators)
+- With relative position encoding (using `dot_prod_with_idx_all` and `attention_step2_with_rel_pos_value` operators)
 
-# Extract features from output tensor
-output_feats = output_tensor.query_feats
-```
+Input voxel count: 268,720
 
-## Authors
+(1) **Memory Consumption Comparison**
 
-Xin Lai (a Ph.D student at CSE CUHK, xinlai@cse.cuhk.edu.hk) - Initial CUDA implementation, maintainance.
+FP16 and BF16 showed identical memory usage, reducing consumption by `33%` and `35%` respectively compared to FP32.
 
-Fanbin Lu (a Ph.D student at CSE CUHK) - Improve CUDA implementation, maintainance.
+| ID | dtype | w/o rel pos (MB) | w/ rel pos (MB) |
+|:---:|:---:|:---:|:---:|
+| 1 | FP32 | 580 | 622 |
+| 2 | FP16 | 386 | 406 |
+| 3 | BF16 | 386 | 406 |
 
-Yukang Chen (a Ph.D student at CSE CUHK) - Maintainance. 
+(2) **Precision Comparison**
 
+Maximum errors in output and gradients were measured
 
-## Cite
+- Without Relative Position Encoding
 
-If you find this project useful, please consider citing
-```
-@inproceedings{lai2023spherical,
-  title={Spherical Transformer for LiDAR-based 3D Recognition},
-  author={Lai, Xin and Chen, Yukang and Lu, Fanbin and Liu, Jianhui and Jia, Jiaya},
-  booktitle={Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition},
-  year={2023}
-}
-```
-```
-@inproceedings{lai2022stratified,
-  title={Stratified transformer for 3d point cloud segmentation},
-  author={Lai, Xin and Liu, Jianhui and Jiang, Li and Wang, Liwei and Zhao, Hengshuang and Liu, Shu and Qi, Xiaojuan and Jia, Jiaya},
-  booktitle={Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition},
-  pages={8500--8509},
-  year={2022}
-}
-```
+| dtype | output | query grad | key grad | value grad |
+|:---:|:---:|:---:|:---:|:---:|
+| FP16 vs FP32 | 2.7e-02 | 6.6e-06 | 6.9e-05 | 9.9e-07 |
+| BF16 vs FP32 | 3.2e-01 | 1.9e-07 | 1.9e-06 | 3.6e-08 |
 
-## License
+- With Relative Position Encoding
 
-This project is licensed under the Apache license 2.0 License.
+| dtype | output | query grad | key grad | value grad | query table grad | key table grad | value table grad |
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| FP16 vs FP32 | 3.8e-02 | 2.9e-06 | 1.1e-05 | 5.2e-07 | 1.3e-02 | 2.6e-02 | 4.0e-02 |
+| BF16 vs FP32 | 2.5e-01 | 1.0e-07 | 2.0e-07 | 2.4e-08 | 1.5e-02 | 3.0e-02 | 4.1e-02 |
+
+## 4.2 Semantic Segmentation Task Evaluation
+Tests conducted using [SphereFormer]((https://github.com/dvlab-research/SphereFormer)) model
+
+(1) **Training Mode**
+
+With configuration parameters held constant except for the SpTr module's `dtype`, FP16/BF16 implementations demonstrate equivalent mIoU accuracy while reducing memory consumption by `31% (20.3GB => 14.1GB)`
+
+| ID | dtype | mIoU | Memory (GB) | Time/epoch (min) |
+|:---:|:---:|:---:|:---:|:---:|
+| 1 | FP32 | 66.34 | 20.3 | 25 |
+| 2 | FP16 | 66.18 | 14.1 | 24 |
+| 3 | BF16 | 66.50 | 14.1 | 24 |
+
+(2) **Inference Mode**
+
+Same model evaluated with different `dtype`, both FP16 and BF16 significantly reduce memory usage by `31% (18.1GB => 15.4GB)`
+
+| ID | dtype | mIoU | Memory (GB) | Time (s) |
+|:---:|:---:|:---:|:---:|:---:|
+| 1 | FP32 | 85.53 | 18.1 | 61 |
+| 2 | FP16 | 85.53 | 15.4 | 58 |
+| 3 | BF16 | 85.51 | 15.4 | 61 |
