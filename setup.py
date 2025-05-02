@@ -35,7 +35,7 @@ setup(
     url="https://github.com/lh9171338/SparseTransformer",
     classifiers=[
         "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: Apache License",
+        "License :: OSI Approved :: Apache Software License",
         "Operating System :: OS Independent",
     ],
     packages=["sptr"],
